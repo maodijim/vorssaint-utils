@@ -5,8 +5,190 @@ import Foundation
 import CoreGraphics
 
 enum NotchTests {
+    private static func simulatedMenuBoundsContracts(expect: (Bool, String) -> Void) {
+        let screen = CGRect(x: -1470, y: 100, width: 1470, height: 956)
+        for height: CGFloat in [16, 22, 24, 32, 40, 64] {
+            let bar = CGRect(x: screen.minX, y: screen.maxY - height, width: screen.width, height: height)
+            for room: CGFloat? in [nil, 0, 12, 43, 44, 56, 64] {
+                let geometry = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0,
+                                             menuBarHeight: height, compactSideRoom: room)
+                let sizes = [geometry.restingSize(showsContent: false), geometry.collapsed,
+                             geometry.notice, geometry.noticeSize(notification: true),
+                             geometry.compactMusicGeometry.compactActivitySize,
+                             geometry.compactTimerGeometry(showsDownloads: false).compactActivitySize,
+                             geometry.compactTimerGeometry(showsDownloads: true).compactActivitySize,
+                             geometry.compactActivitySize]
+                for size in sizes {
+                    expect(bar.contains(geometry.frame(for: size)),
+                           "every closed or compact simulated surface stays entirely within the actual menu bar")
+                }
+                expect(abs(geometry.cameraWidth / geometry.cameraHeight - 180.0 / 32) < 0.001,
+                       "fitting a shorter menu bar scales the whole simulated camera profile proportionally")
+            }
+            var crowded = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: height)
+            let camera = crowded.frame(for: crowded.restingSize(showsContent: false))
+            let occupied = [CGRect(x: screen.minX, y: bar.minY, width: camera.minX - screen.minX - 10, height: height),
+                            CGRect(x: camera.maxX + 10, y: bar.minY, width: screen.maxX - camera.maxX - 10, height: height)]
+            crowded.compactSideRoom = NotchMenuBarLayout.sideRoom(screen: screen, cameraWidth: crowded.cameraWidth,
+                                                                 barHeight: height, occupied: occupied)
+            for size in [crowded.collapsed, crowded.compactMusicGeometry.compactActivitySize,
+                         crowded.compactTimerGeometry(showsDownloads: true).compactActivitySize] {
+                expect(!occupied.contains(where: { $0.intersects(crowded.frame(for: size)) }),
+                       "simulated idle, music and timer wings never cover measured neighboring menus")
+            }
+        }
+    }
+
+    private static func simulatedDisplayContracts(expect: (Bool, String) -> Void) {
+        let screens = [CGRect(x: 0, y: 0, width: 1440, height: 900),
+                       CGRect(x: -1920, y: -100, width: 1920, height: 1080),
+                       CGRect(x: 100, y: 982, width: 900, height: 1440),
+                       CGRect(x: 0, y: 0, width: 640, height: 480)]
+        let rooms: [CGFloat?] = [nil, 0, 43, 64, 200, .nan, .infinity]
+        for screen in screens {
+            for barHeight: CGFloat in [16, 24, 32, 40, 64] {
+                let physical = NotchGeometry(screen: screen, safeAreaTop: barHeight, cameraWidth: 180 * barHeight / 32,
+                                             menuBarHeight: barHeight)
+                for room in rooms {
+                    let geometry = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0,
+                                                 menuBarHeight: barHeight, compactSideRoom: room)
+                    expect(!geometry.isNotched && geometry.cameraWidth == physical.cameraWidth
+                           && geometry.cameraHeight == physical.cameraHeight
+                           && geometry.safeContentTop == physical.safeContentTop,
+                           "a simulated notch keeps the physical profile and content clearance without claiming hardware exists")
+                    expect(geometry.restingSize(showsContent: false) == physical.restingSize(showsContent: false)
+                           && geometry.notice == physical.notice && geometry.expanded == physical.expanded,
+                           "idle, feedback and expanded simulations use the same proportions as a physical cutout")
+                    let sizes = [geometry.restingSize(showsContent: false), geometry.collapsed, geometry.peek,
+                                 geometry.notice, geometry.noticeSize(notification: true)]
+                        + NotchModule.allCases.map { geometry.expandedSize(module: $0) }
+                        + [geometry.sectionPickerSize(count: NotchModule.allCases.count)]
+                    for size in sizes {
+                        let positioned = geometry.frame(for: size)
+                        expect(screen.contains(positioned) && positioned.midX == screen.midX
+                               && positioned.maxY == screen.maxY,
+                               "every simulated presentation grows directly from the screen edge and stays within its display")
+                    }
+                    for activity in [geometry, geometry.compactMusicGeometry,
+                                     geometry.compactTimerGeometry(showsDownloads: false),
+                                     geometry.compactTimerGeometry(showsDownloads: true)] {
+                        let positioned = activity.frame(for: activity.compactActivitySize)
+                        let activation = activity.activationArea(in: activity.compactActivitySize, hasHeader: false,
+                                                                 compactActivity: true)
+                        expect(positioned.maxY == screen.maxY && screen.contains(positioned)
+                               && (activity.compactActivityWingWidth == 0 || activity.compactActivityWingWidth >= 44)
+                               && activity.compactActivityContentHeight == barHeight,
+                               "simulated activities keep complete measured wings or just the cutout, within the menu bar")
+                        expect(activity.compactActivityCameraGap == physical.cameraWidth && !activity.compactActivityUsesFooter
+                               && activation.width == physical.cameraWidth
+                               && activation.midX == activity.compactActivitySize.width / 2,
+                               "the simulated camera opens the island while its neighboring controls keep their own click targets")
+                    }
+                }
+            }
+        }
+    }
+
+    private static func menuSpaceReuseContracts(expect: (Bool, String) -> Void) {
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let previous = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: 24, compactSideRoom: 0)
+        let largerBar = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: 32)
+        let menu = CGRect(x: screen.midX + previous.cameraWidth / 2 + 4, y: screen.maxY - 24, width: 80, height: 24)
+        expect(NotchMenuBarLayout.sideRoom(screen: screen, cameraWidth: previous.cameraWidth, barHeight: 24, occupied: [menu]) != nil
+               && NotchMenuBarLayout.sideRoom(screen: screen, cameraWidth: largerBar.cameraWidth, barHeight: 32, occupied: [menu]) == nil,
+               "a taller simulated cutout can occupy a menu that was clear before the bar changed")
+        expect(!largerBar.hasSameMenuBar(as: previous),
+               "a changed menu bar cannot reuse clearance from a narrower simulated camera")
+        let moved = NotchGeometry(screen: screen.offsetBy(dx: -1440, dy: 900), safeAreaTop: 0, cameraWidth: 0)
+        expect(!moved.hasSameMenuBar(as: previous), "another display cannot reuse the previous menu measurement")
+        for layout in NotchSize.allCases {
+            let resized = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, layout: layout)
+            expect(resized.hasSameMenuBar(as: previous),
+                   "changing the expanded size preserves valid menu clearance without flicker")
+        }
+    }
+
+    private static func menuBarHeightContracts(expect: (Bool, String) -> Void) {
+        var measurements = NotchMenuBarMeasurements()
+        let screen = CGRect(x: -1440, y: -900, width: 1440, height: 900)
+        func read(_ id: UInt32, gap: CGFloat, frame: CGRect = CGRect(x: -1440, y: -900, width: 1440, height: 900),
+                  scale: CGFloat = 2, fallback: CGFloat = 22) -> CGFloat {
+            measurements.height(displayID: id, frame: frame, visibleTop: frame.maxY - gap,
+                                scale: scale, statusBarThickness: fallback)
+        }
+        for height: CGFloat in [16, 22, 24, 28, 30, 32, 33, 37, 64] {
+            expect(read(1, gap: height) == height, "the selected display's current visible bar supplies its height")
+            let geometry = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: height)
+            expect(geometry.collapsed.height == height && geometry.compactMusicGeometry.compactActivitySize.height == height,
+                   "the simulated cutout and music strip stay within the measured bar")
+            for gap: CGFloat in [0, 1, -10, 15, 65, 600, .nan, .infinity] {
+                expect(read(1, gap: gap) == height, "hiding or an unavailable reading retains this display's measured height")
+            }
+        }
+        expect(read(1, gap: 24) == 24 && read(2, gap: 33) == 33,
+               "displays with different menu bars keep independent measurements")
+        for _ in 0..<3 {
+            expect(read(1, gap: 0) == 24 && read(2, gap: 0) == 33,
+                   "switching displays and changing other preferences while bars are hidden preserves both heights")
+        }
+        expect(read(3, gap: 0) == 22 && read(3, gap: 0, fallback: .nan) == 24,
+               "a display first seen with a hidden bar uses a safe native fallback, never another display's height")
+        expect(read(3, gap: 30) == 30 && read(3, gap: 0) == 30,
+               "revealing a previously unknown bar replaces the fallback and survives hiding again")
+        expect(read(1, gap: 0, frame: screen.offsetBy(dx: 1440, dy: 1800)) == 24,
+               "moving a display in the arrangement preserves its mode's measured height")
+        expect(read(1, gap: 0, scale: 1) == 22 && read(1, gap: 0, scale: 2) == 22,
+               "a scale change invalidates the old height even after changing back while the bar stays hidden")
+        _ = read(1, gap: 30)
+        expect(read(1, gap: 0, frame: CGRect(x: 0, y: 0, width: 1920, height: 1080)) == 22,
+               "a new screen resolution cannot inherit a previous mode's height")
+        measurements.retainDisplays([1, 3])
+        expect(read(2, gap: 0) == 22 && read(3, gap: 0) == 30,
+               "disconnecting a display drops its history without affecting the remaining display")
+        expect(read(0, gap: 37) == 37 && read(0, gap: 0) == 22,
+               "an unknown display identity can use its current reading but cannot share remembered measurements")
+        _ = read(1, gap: 30, scale: .nan)
+        expect(read(1, gap: 0) == 22, "an invalid display mode cannot seed remembered height")
+        var fresh = NotchMenuBarMeasurements()
+        for invalid: CGFloat in [0, -1, 15, 65, .nan, .infinity] {
+            expect(fresh.height(displayID: 1, frame: screen, visibleTop: screen.maxY,
+                                scale: 2, statusBarThickness: invalid) == 24,
+                   "invalid fallback heights never escape the safe range")
+        }
+    }
+
+    private static func musicLabelContracts(expect: (Bool, String) -> Void) {
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        for height: CGFloat in [16, 22, 24, 28, 30, 33, 37, 64] {
+            for room: CGFloat? in [nil, 0, 43, 44, 56, 0, 56] {
+                let geometry = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0,
+                                             menuBarHeight: height, compactSideRoom: room).compactMusicGeometry
+                let contentLeft = geometry.compactActivityWingWidth + geometry.compactMusicLabelInset
+                let bottomCurveEnd = min(NotchLayout.shoulder, height * 0.28) + min(28, height / 2)
+                expect(contentLeft >= bottomCurveEnd + 4,
+                       "center text clears the entire curved silhouette even after the music wings disappear")
+                expect(geometry.compactActivityCameraGap - geometry.compactMusicLabelInset * 2 >= 50,
+                       "protecting the curves still leaves useful room for a truncated track name")
+                if geometry.compactActivityWingWidth >= 44 {
+                    expect(geometry.compactMusicLabelInset == 4,
+                           "available music wings preserve the original center text budget")
+                }
+            }
+        }
+    }
+
     static func run(expect: (Bool, String) -> Void) {
+        simulatedMenuBoundsContracts(expect: expect)
+        simulatedDisplayContracts(expect: expect)
+        menuSpaceReuseContracts(expect: expect)
+        menuBarHeightContracts(expect: expect)
+        musicLabelContracts(expect: expect)
+        NotchHoverTests.run(expect: expect)
+        NotchScreenEdgeClickTests.run(expect: expect)
         NotchPresentationRefreshContract.run(expect: expect)
+        NotchScreenRefreshContract.run(expect: expect)
+        NotchDestinationContract.run(expect: expect)
+        NotchMusicVisibilityTests.run(expect: expect)
         NotchCaptureKeyboardTests.run(expect: expect)
         NotchDownloadProgressTests.run(expect: expect)
         NotchSliderEditingTests.run(expect: expect)
@@ -120,10 +302,14 @@ enum NotchTests {
         expect(!NotchSupport.showsMusicActivity(isPlaying: true, in: defaults), "automatic music presentation can be disabled")
         defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)
         expect(NotchSupport.visibleIdleContent(isPlaying: false, in: defaults) == .none
-               && NotchSupport.visibleIdleContent(isPlaying: true, in: defaults) == .music,
-               "explicit idle music has no empty wings while stopped and returns on playback even with automatic music disabled")
+               && NotchSupport.visibleIdleContent(isPlaying: true, in: defaults) == .none,
+               "idle music cannot bypass disabled automatic music presentation")
         expect(NotchSupport.idleContent(in: defaults) == .music,
-               "hiding stopped idle music preserves the choice that keeps its playback observer available")
+               "disabling automatic music preserves the user's saved resting choice")
+        defaults.set(true, forKey: DefaultsKey.notchShowPlayingMusic)
+        expect(NotchSupport.visibleIdleContent(isPlaying: false, in: defaults) == .none
+               && NotchSupport.visibleIdleContent(isPlaying: true, in: defaults) == .music,
+               "re-enabling automatic music restores the selected music only during playback")
         let idleGeometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1470, height: 956),
                                         safeAreaTop: 32, cameraWidth: 180, compactSideRoom: 100)
         expect(idleGeometry.restingSize(showsContent: NotchSupport.visibleIdleContent(isPlaying: false, in: defaults) != .none)
@@ -131,14 +317,31 @@ enum NotchTests {
                "stopped idle music shrinks to the physical camera without reserving empty side space")
         defaults.set(NotchIdleContent.none.rawValue, forKey: DefaultsKey.notchIdleContent)
         defaults.set(true, forKey: DefaultsKey.notchShowPlayingMusic)
+        expect(!NotchSupport.watchesMusicActivity(in: defaults)
+               && !NotchSupport.showsMusicActivity(isPlaying: true, in: defaults)
+               && NotchSupport.visibleIdleContent(isPlaying: true, in: defaults) == .none,
+               "Nothing at rest suppresses playing music and its background observer without disabling the island")
+        expect(NotchSupport.isEnabled(in: defaults) && NotchSupport.modules(in: defaults).contains(.music),
+               "Nothing at rest keeps the island and its on-demand music section available")
+        defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)
         defaults.set("music", forKey: DefaultsKey.notchHiddenModules)
-        expect(!NotchSupport.watchesMusicActivity(in: defaults), "hidden music does not keep an activity observer")
+        expect(!NotchSupport.watchesMusicActivity(in: defaults)
+               && NotchSupport.visibleIdleContent(isPlaying: true, in: defaults) == .none,
+               "hidden music cannot keep an activity observer or resting content")
         defaults.set("", forKey: DefaultsKey.notchHiddenModules)
+        defaults.set(NotchIdleContent.none.rawValue, forKey: DefaultsKey.notchIdleContent)
         defaults.set(true, forKey: DefaultsKey.notchMusicActivity)
-        expect(NotchSupport.idleContent(in: defaults) == .none, "legacy music preference cannot populate a newly empty idle surface")
+        expect(NotchSupport.idleContent(in: defaults) == .none
+               && !NotchSupport.showsMusicActivity(isPlaying: true, in: defaults),
+               "legacy music preference cannot populate a newly empty idle surface")
         defaults.set(NotchIdleContent.battery.rawValue, forKey: DefaultsKey.notchIdleContent)
-        expect(NotchSupport.visibleIdleContent(isPlaying: false, in: defaults) == .battery,
-               "idle battery remains an independent explicit choice when music is stopped")
+        expect(NotchSupport.visibleIdleContent(isPlaying: false, in: defaults) == .battery
+               && NotchSupport.showsMusicActivity(isPlaying: true, in: defaults),
+               "battery at rest preserves automatic music while playing")
+        defaults.set(false, forKey: DefaultsKey.notchShowPlayingMusic)
+        expect(NotchSupport.visibleIdleContent(isPlaying: true, in: defaults) == .battery
+               && !NotchSupport.showsMusicActivity(isPlaying: true, in: defaults),
+               "disabling automatic music leaves the selected battery visible during playback")
         defaults.set(false, forKey: AppFeature.monitorPower.availabilityKey)
         expect(NotchSupport.idleContent(in: defaults) == .none, "unavailable battery cannot appear while idle")
         defaults.set(true, forKey: AppFeature.monitorPower.availabilityKey)
@@ -233,8 +436,8 @@ enum NotchTests {
                == footerGeometry.compactActivityTopPadding,
                "top activation does not cover timer and download controls in the footer")
         let plainGeometry = NotchGeometry(screen: idleGeometry.screen, safeAreaTop: 0, cameraWidth: 0, compactSideRoom: 0)
-        expect(plainGeometry.activationArea(in: plainGeometry.compactActivitySize, hasHeader: false, compactActivity: true).isEmpty,
-               "a footer without a physical notch keeps all of its controls clickable")
+        expect(plainGeometry.activationArea(in: plainGeometry.compactActivitySize, hasHeader: false, compactActivity: true).width == plainGeometry.cameraWidth,
+               "the simulated camera leaves the activity controls beside it independently clickable")
         expect(ScreenshotSupport.selectionDimAlpha(notchControls: true, isFrozen: true, isDragging: false) == 0,
                "opening capture controls in the notch does not darken the desktop")
         expect(ScreenshotSupport.selectionDimAlpha(notchControls: true, isFrozen: true, isDragging: true) > 0,
@@ -499,12 +702,12 @@ enum NotchTests {
                     let positioned = geometry.frame(for: size)
                     expect(frame.contains(positioned), "notch fits displays in every coordinate quadrant")
                     expect(positioned.midX == frame.midX, "notch stays centered while morphing")
-                    expect(positioned.maxY == frame.maxY - geometry.topInset,
+                    expect(positioned.maxY == frame.maxY,
                            "top edge does not jump across presentation states")
                 }
                 expect(geometry.musicWingWidth * 2 + geometry.musicCameraGap == geometry.musicStrip.width,
                        "horizontal metadata uses equal wings around the camera")
-                expect(geometry.frame(for: geometry.musicStrip).maxY == frame.maxY - geometry.topInset,
+                expect(geometry.frame(for: geometry.musicStrip).maxY == frame.maxY,
                        "the lateral music strip remains attached to the same top edge")
                 expect(geometry.contentSize(for: geometry.expandedSize(module: .music)).height >= 212,
                        "compact music reserves room for metadata, transport, progress and volume together")
@@ -567,12 +770,12 @@ enum NotchTests {
                         let size = geometry.noticeSize(notification: notification)
                         let wings = geometry.noticeWingWidth(notification: notification)
                         expect(size.height == geometry.menuBarHeight
-                               && geometry.frame(for: size).minY == frame.maxY - geometry.menuBarHeight,
-                               "every transient notice stays inside the menu bar across display and message types")
+                               && geometry.frame(for: size).maxY == frame.maxY,
+                               "feedback preserves the same camera clearance on physical and simulated notches")
                         expect(wings > 0 && wings * 2 + geometry.noticeCameraGap == size.width,
                                "notice wings exactly fill their horizontal surface without entering the camera gap")
-                        expect(geometry.noticeCameraGap == (notched ? geometry.cameraWidth : 0),
-                               "screens without a camera have no empty middle spacer")
+                        expect(geometry.noticeCameraGap == geometry.cameraWidth,
+                               "a simulated camera retains the same central gap as a physical camera")
                     }
                 }
             }
@@ -594,7 +797,7 @@ enum NotchTests {
             tight.compactSideRoom = available
             let music = tight.compactMusicGeometry
             expect(!music.compactActivityUsesFooter && music.compactActivitySize.height == roomy.menuBarHeight
-                   && music.compactActivityTopPadding == 0 && music.compactActivityGeometry.topInset == 0,
+                   && music.compactActivityTopPadding == 0,
                    "compact music never grows or moves below the menu bar when space changes")
             if available.isFinite && available >= 44 {
                 let cover = min(26, music.menuBarHeight - 6, music.compactActivityWingWidth - 20)
@@ -615,15 +818,15 @@ enum NotchTests {
         expect(roomy.musicStrip.width <= 380 && roomy.restingWingWidth == 44,
                "music and idle indicators both respect the same measured menu gap")
         let simulated = NotchGeometry(screen: menuScreen, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: 22)
-        expect(simulated.topInset == 0 && simulated.musicStrip.height == 22 && simulated.collapsed.height == 22,
-               "ordinary simulated-notch geometry preserves the existing menu-bar placement")
+        expect(simulated.frame(for: simulated.collapsed).maxY == menuScreen.maxY
+               && simulated.cameraHeight == 22 && simulated.cameraWidth == 180 * 22.0 / 32,
+               "a simulated cutout has notebook proportions and attaches directly to the screen edge")
         let crowdedRooms: [CGFloat?] = [nil, -1, 0, 27, 43, CGFloat.nan, CGFloat.infinity]
         for available in crowdedRooms {
             let crowded = NotchGeometry(screen: menuScreen, safeAreaTop: 32, cameraWidth: 180,
                                         menuBarHeight: 32, compactSideRoom: available)
-            let layout = crowded.compactActivityGeometry
             let size = crowded.compactActivitySize
-            let window = layout.frame(for: size)
+            let window = crowded.frame(for: size)
             let visibleContentTop = window.maxY - crowded.compactActivityTopPadding
             expect(crowded.compactActivityUsesFooter && crowded.compactActivityWingWidth >= 42,
                    "an active timer, paused timer or download has readable content with missing or crowded menu geometry")
@@ -647,10 +850,10 @@ enum NotchTests {
         for frame in frames {
             let external = NotchGeometry(screen: frame, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: 22,
                                           compactSideRoom: nil)
-            let position = external.compactActivityGeometry.frame(for: external.compactActivitySize)
-            expect(position.maxY == frame.maxY - external.menuBarHeight && frame.contains(position)
-                   && external.compactActivityWingWidth >= 42 && external.compactActivityTopPadding == 0,
-                   "a fallback on a screen without a notch lives entirely below its menus, in every screen coordinate quadrant")
+            let position = external.frame(for: external.compactActivitySize)
+            expect(position.maxY == frame.maxY && frame.contains(position)
+                   && external.compactActivityWingWidth == 0 && external.compactActivityTopPadding == 0,
+                   "a simulated notch stays attached to its own screen edge in every coordinate quadrant")
         }
         let mediaGeometry = NotchGeometry(screen: menuScreen, safeAreaTop: 32, cameraWidth: 180)
         for layout in NotchSize.allCases {
