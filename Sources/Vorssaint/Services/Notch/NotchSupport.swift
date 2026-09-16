@@ -431,6 +431,12 @@ enum NotchEvent: String, CaseIterable {
 
 enum NotchSupport {
     static let toolColumns = 5
+    static let defaultHoverDelay = 0.25
+    static let hoverDelayRange = 0.10...1.0
+
+    static func sanitizedHoverDelay(_ value: TimeInterval) -> TimeInterval {
+        value.isFinite ? min(hoverDelayRange.upperBound, max(hoverDelayRange.lowerBound, value)) : defaultHoverDelay
+    }
 
     static func moduleShortcut(_ characters: String, modules: [NotchModule]) -> NotchModule? {
         modules.first { $0.shortcutKey == characters.lowercased() }
@@ -757,17 +763,16 @@ struct NotchGeometry: Equatable {
         max(0, (compactActivitySize.width - compactActivityCameraGap - compactActivityHorizontalPadding * 2) / 2)
     }
     var notice: CGSize {
-        noticeSize(notification: false)
+        noticeSize(wingWidth: 112)
     }
     var noticeCameraGap: CGFloat { cameraWidth }
 
-    func noticeSize(notification: Bool) -> CGSize {
-        let wing: CGFloat = notification ? 190 : 112
-        return CGSize(width: min(screen.width - 24, noticeCameraGap + wing * 2), height: menuBarHeight)
+    func noticeSize(wingWidth: CGFloat) -> CGSize {
+        CGSize(width: min(screen.width - 24, noticeCameraGap + wingWidth * 2), height: menuBarHeight)
     }
 
-    func noticeWingWidth(notification: Bool) -> CGFloat {
-        max(0, (noticeSize(notification: notification).width - noticeCameraGap) / 2)
+    func noticeWingWidth(preferred: CGFloat) -> CGFloat {
+        max(0, (noticeSize(wingWidth: preferred).width - noticeCameraGap) / 2)
     }
     var peek: CGSize {
         CGSize(width: min(screen.width - 24, max(cameraWidth + 110, 340)), height: safeContentTop + 52)
@@ -789,7 +794,7 @@ struct NotchGeometry: Equatable {
 
     func expandedSize(module: NotchModule, detail: Bool = false, controlRows: Int = 2,
                       sliderCount: Int = 2, controlsHaveMusic: Bool = false, musicHasContent: Bool = true, musicExtraHeight: CGFloat = 0,
-                      fileMediaVisible: Bool = false, systemRows: Int = 3,
+                      fileMediaHeight: CGFloat? = nil, systemRows: Int = 3,
                       capturePreviewHeight: CGFloat? = nil,
                       timerHasSession: Bool = false, timerShowsPomodoro: Bool = false) -> CGSize {
         let contentHeight: CGFloat
@@ -810,7 +815,7 @@ struct NotchGeometry: Equatable {
             let rows = max(0, systemRows)
             contentHeight = NotchLayout.chromeHeight
                 + (rows == 0 ? 160 : CGFloat(rows) * 96 + CGFloat(rows - 1) * 10)
-        case .files: contentHeight = fileMediaVisible ? NotchLayout.chromeHeight + 600 : 336
+        case .files: contentHeight = fileMediaHeight.map { NotchLayout.chromeHeight + $0 } ?? 336
         case .clipboard: contentHeight = 340
         case .captures: contentHeight = capturePreviewHeight.map { NotchLayout.chromeHeight + $0 + 4 } ?? 340
         case .timer: contentHeight = NotchLayout.chromeHeight
@@ -819,9 +824,10 @@ struct NotchGeometry: Equatable {
         case .tools, .calendar, .notifications, .downloads: contentHeight = 400
         }
         let showsCapturePreview = module == .captures && !detail && capturePreviewHeight != nil
+        let showsFileMedia = module == .files && !detail && fileMediaHeight != nil
         let fillsHeight = detail || (!showsCapturePreview && [.mixer, .clipboard, .captures, .tools].contains(module))
         var preferredHeight = safeContentTop + (detail ? 440 : contentHeight)
-            + (layout == .spacious && module != .controls && module != .music && module != .timer && !showsCapturePreview ? 40 : 0)
+            + (layout == .spacious && module != .controls && module != .music && module != .timer && !showsCapturePreview && !showsFileMedia ? 40 : 0)
         if layout == .custom {
             preferredHeight = fillsHeight ? customHeight : min(preferredHeight, customHeight)
         }

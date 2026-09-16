@@ -97,6 +97,7 @@ enum DefaultsKey {
     static let switcherCurrentDisplayOnly = "switcherCurrentDisplayOnly" // list only windows on the display under the pointer (issue #1391)
     static let minimalWindowPreviews = "minimalWindowPreviews"
     static let dockPreviewEnabled = "dockPreviewEnabled"
+    static let dockPreviewCurrentSpaceOnly = "dockPreviewCurrentSpaceOnly"
     static let dockPreviewBackgroundOpacity = "dockPreviewBackgroundOpacity" // how solid the preview panel's material is drawn (DockPreviewSupport.backgroundOpacityRange)
     static let dockPreviewOpenDelay = "dockPreviewOpenDelay" // milliseconds the cursor must rest on a Dock icon before its panel opens (DockPreviewSupport.openDelayMillisecondsRange)
     static let dockPreviewQuitAppOnClose = "dockPreviewQuitAppOnClose" // the preview card's close button quits the owning app instead of closing one window
@@ -450,6 +451,7 @@ enum DefaultsKey {
     static let mediaImageRenamePattern = "mediaImageRenamePattern"
     static let mediaImageBackground = "mediaImageBackground"
     static let mediaImagePreserveModificationDate = "mediaImagePreserveModificationDate"
+    static let mediaImageSaveInSubfolder = "mediaImageSaveInSubfolder"
     static let mediaImageProfiles = "mediaImageProfiles"
     static let mediaImageSelectedProfileID = "mediaImageSelectedProfileID"
     static let mediaTextAccurate = "mediaTextAccurate"
@@ -577,6 +579,8 @@ enum DefaultsKey {
     static let screenshotToolShortcutsEnabled = "screenshotToolShortcutsEnabled"
     static let screenshotBackdropStyle = "screenshotBackdropStyle"
     static let screenshotBackdropPresets = "screenshotBackdropPresets"
+    static let screenshotWatermarkStyle = "screenshotWatermarkStyle"
+    static let screenshotWatermarkPresets = "screenshotWatermarkPresets"
     static let screenshotOpenEditorDirectly = "screenshotOpenEditorDirectly"
     static let screenshotCopyToClipboard = "screenshotCopyToClipboard"
     static let screenshotPreviewPosition = "screenshotPreviewPosition"
@@ -689,6 +693,10 @@ enum DefaultsKey {
     static let notchEnabled = "notchEnabled"
     static let notchDisplay = "notchDisplay"
     static let notchOpenOnHover = "notchOpenOnHover"
+    static let notchHideUntilHover = "notchHideUntilHover"
+    static let notchHoverDelay = "notchHoverDelay"
+    static let notchReturnHome = "notchReturnHome"
+    static let notchHomeModule = "notchHomeModule"
     static let notchHiddenModules = "notchHiddenModules"
     static let notchModuleOrder = "notchModuleOrder"
     static let notchQuickAccessLayout = "notchQuickAccessLayout"
@@ -746,8 +754,11 @@ enum UpdateHighlightsInfo {
         guard let version = UpdateServiceSupport.SemanticVersion(raw: appVersion),
               let release = UpdateServiceSupport.SemanticVersion(raw: releaseVersion),
               (version.major, version.minor, version.patch) == (release.major, release.minor, release.patch),
-              version.prerelease.count == 2, version.prerelease[0].description == "beta",
+              (2...3).contains(version.prerelease.count), version.prerelease[0].description == "beta",
               let number = Int(version.prerelease[1].description) else { return false }
+        if version.prerelease.count == 3 {
+            guard case let .numeric(hotfix) = version.prerelease[2], hotfix >= 0 else { return false }
+        }
         return number >= 1
     }
 
@@ -982,6 +993,7 @@ enum Defaults {
         DefaultsKey.switcherCurrentDisplayOnly: false,
         DefaultsKey.minimalWindowPreviews: false,
         DefaultsKey.dockPreviewEnabled: false,
+        DefaultsKey.dockPreviewCurrentSpaceOnly: false,
         DefaultsKey.dockPreviewBackgroundOpacity: 1.0,
         DefaultsKey.dockPreviewOpenDelay: DockPreviewSupport.defaultOpenDelayMilliseconds,
         DefaultsKey.dockPreviewQuitAppOnClose: false,
@@ -1131,6 +1143,10 @@ enum Defaults {
         DefaultsKey.notchEnabled: false,
         DefaultsKey.notchDisplay: NotchDisplay.automatic.rawValue,
         DefaultsKey.notchOpenOnHover: true,
+        DefaultsKey.notchHideUntilHover: false,
+        DefaultsKey.notchHoverDelay: NotchSupport.defaultHoverDelay,
+        DefaultsKey.notchReturnHome: false,
+        DefaultsKey.notchHomeModule: NotchModule.controls.rawValue,
         DefaultsKey.notchHiddenModules: "",
         DefaultsKey.notchModuleOrder: "",
         DefaultsKey.notchQuickAccessLayout: Data(),
@@ -1337,6 +1353,7 @@ enum Defaults {
         DefaultsKey.mediaImageRenamePattern: "",
         DefaultsKey.mediaImageBackground: MediaImageBackground.transparent.rawValue,
         DefaultsKey.mediaImagePreserveModificationDate: false,
+        DefaultsKey.mediaImageSaveInSubfolder: false,
         DefaultsKey.mediaImageProfiles: "[]",
         DefaultsKey.mediaImageSelectedProfileID: "",
         DefaultsKey.mediaTextAccurate: true,
@@ -1461,10 +1478,12 @@ enum Defaults {
         DefaultsKey.screenshotToolShortcuts: "",
         DefaultsKey.screenshotBackdropStyle: "",
         DefaultsKey.screenshotBackdropPresets: "[]",
+        DefaultsKey.screenshotWatermarkStyle: "",
+        DefaultsKey.screenshotWatermarkPresets: "[]",
         DefaultsKey.screenshotOpenEditorDirectly: false,
         DefaultsKey.screenshotCopyToClipboard: false,
         DefaultsKey.screenshotPreviewPosition: ScreenshotSupport.QuickPreviewPosition.automatic.rawValue,
-        DefaultsKey.screenshotPreviewTakesFocus: false,
+        DefaultsKey.screenshotPreviewTakesFocus: true,
         DefaultsKey.screenshotSharingEnabled: true,
         DefaultsKey.panelUtilityScreenshot: true,
         DefaultsKey.windowLayoutShortcutsEnabled: false,
