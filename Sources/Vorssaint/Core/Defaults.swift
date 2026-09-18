@@ -27,6 +27,10 @@ enum DefaultsKey {
     static let keepAwakeConnectedToPower = "keepAwakeConnectedToPower"
     static let keepAwakeRunningApps = "keepAwakeRunningApps"
     static let keepAwakeRunningAppBundleIDs = "keepAwakeRunningAppBundleIDs"
+    // Match mode over the automation conditions: false is Any (one matching
+    // condition starts a session), true is All (every enabled condition has
+    // to match, and losing one ends the session). Issue #1587.
+    static let keepAwakeAutomationRequireAll = "keepAwakeAutomationRequireAll"
     static let keepAwakePauseWhenLocked = "keepAwakePauseWhenLocked"
     static let keepAwakeMouseJiggleEnabled = "keepAwakeMouseJiggleEnabled"
     static let keepAwakeMouseJiggleInterval = "keepAwakeMouseJiggleIntervalMinutes"
@@ -41,6 +45,8 @@ enum DefaultsKey {
     static let sleepDisabledFlag = "vorssDisabledSleep"   // internal guard for pmset disablesleep
     static let scrollInverterEnabled = "scrollInverterEnabled"
     static let scrollInverterHorizontalEnabled = "scrollInverterHorizontalEnabled"
+    static let scrollHorizontalEnabled = "scrollHorizontalEnabled"
+    static let scrollHorizontalModifier = "scrollHorizontalModifier"
     static let focusFollowsMouseEnabled = "focusFollowsMouseEnabled"
     static let focusFollowsMouseDelay = "focusFollowsMouseDelayMilliseconds"
     static let focusFollowsMouseExceptions = "focusFollowsMouseExceptions"
@@ -174,6 +180,13 @@ enum DefaultsKey {
     // answer reads. Kept local so wake handling does not repeatedly probe a
     // sensitive display path.
     static let brightnessDDCWriteOnlyPaths = "brightnessDDCWriteOnlyPaths"
+    // Set once the paths cached before paired discovery requests have been
+    // dropped, so a monitor written off then is classified again exactly once.
+    static let brightnessDDCWriteOnlyPathsRechecked = "brightnessDDCWriteOnlyPathsRechecked"
+    // Per-monitor connection paths a person has told this app to dim in
+    // software: the only way to know a write-only channel swallows its writes
+    // is to watch the panel, which no probe can do. Issue #1589.
+    static let brightnessForcedSoftwarePaths = "brightnessForcedSoftwarePaths"
     // Displays this app switched off, so a run that ends without putting them
     // back can be repaired on the next start instead of needing a replug.
     static let displaysSwitchedOff = "displaysSwitchedOff"
@@ -693,6 +706,7 @@ enum DefaultsKey {
     static let notchAccessoriesEnabled = "notchAccessoriesEnabled"
     static let notchLyricsEnabled = "notchLyricsEnabled"
     static let notchLyricsOnline = "notchLyricsOnline"
+    static let notchLiveEqualizer = "notchLiveEqualizer"
     static let notchQueueEnabled = "notchQueueEnabled"
     static let notchDownloadsEnabled = "notchDownloadsEnabled"
     static let notchDownloadsFolderBookmark = "notchDownloadsFolderBookmark"
@@ -945,6 +959,7 @@ enum Defaults {
         DefaultsKey.keepAwakeConnectedToPower: false,
         DefaultsKey.keepAwakeRunningApps: false,
         DefaultsKey.keepAwakeRunningAppBundleIDs: [String](),
+        DefaultsKey.keepAwakeAutomationRequireAll: false,
         DefaultsKey.keepAwakePauseWhenLocked: false,
         DefaultsKey.keepAwakeMouseJiggleEnabled: false,
         DefaultsKey.keepAwakeMouseJiggleInterval: 5,
@@ -956,6 +971,8 @@ enum Defaults {
         DefaultsKey.showCountdown: false,
         DefaultsKey.scrollInverterEnabled: false,
         DefaultsKey.scrollInverterHorizontalEnabled: false,
+        DefaultsKey.scrollHorizontalEnabled: false,
+        DefaultsKey.scrollHorizontalModifier: ScrollHorizontalModifier.shift.rawValue,
         DefaultsKey.focusFollowsMouseEnabled: false,
         DefaultsKey.focusFollowsMouseDelay: FocusFollowsMouseSupport.defaultDelayMilliseconds,
         DefaultsKey.smoothScrollEnabled: false,
@@ -1149,6 +1166,7 @@ enum Defaults {
         DefaultsKey.notchCalendarEnabled: true,
         DefaultsKey.notchLyricsEnabled: false,
         DefaultsKey.notchLyricsOnline: false,
+        DefaultsKey.notchLiveEqualizer: false,
         DefaultsKey.notchQueueEnabled: false,
         DefaultsKey.notchDownloadsEnabled: false,
         DefaultsKey.notchEnabled: false,
@@ -1558,6 +1576,18 @@ enum Defaults {
         migrateOrphanedCaptureShortcut(in: defaults)
         migrateSilentHeadphonesDisconnectVolume(in: defaults)
         migrateSwitcherWindowlessFinder(in: defaults)
+        recheckBrightnessDDCWriteOnlyPaths(in: defaults)
+    }
+
+    /// Discovery used to send one request per read, which reads a monitor that
+    /// answers only paired requests as write-only. That verdict is cached and
+    /// never re-probed, so it would outlive the fix: drop the cache once.
+    static func recheckBrightnessDDCWriteOnlyPaths(in defaults: UserDefaults) {
+        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked) else {
+            return
+        }
+        defaults.set(true, forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
+        defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
     }
 
     static func migrateBatteryTemperatureVisibility(in defaults: UserDefaults) {
