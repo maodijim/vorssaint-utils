@@ -63,7 +63,7 @@ struct DiskDeviceReading: Identifiable, Equatable {
 enum DiskMenuBarStyle: String, CaseIterable {
     case percent, freePercent, free, used
 
-    static let defaultsKey = "menuBarDiskStyle"
+    static let defaultsKey = DefaultsKey.menuBarDiskStyle
 
     static var current: DiskMenuBarStyle {
         DiskMenuBarStyle(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "") ?? .percent

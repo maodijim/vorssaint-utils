@@ -242,6 +242,18 @@ struct MetricsTests {
             totalReadBytes: nil,
             totalWrittenBytes: nil
         )
+        expect(Defaults.registeredDefaults[DiskMenuBarStyle.defaultsKey] as? String == "percent",
+               "disk menu bar style registers the existing percentage default")
+        expect(SettingsBackupSupport.exportKeys().contains(DiskMenuBarStyle.defaultsKey),
+               "disk menu bar style travels in settings backups")
+        for style in DiskMenuBarStyle.allCases {
+            let restored = SettingsBackupSupport.sanitizedSettings(from: [
+                SettingsBackupSupport.formatVersionKey: SettingsBackupSupport.formatVersion,
+                SettingsBackupSupport.settingsKey: [DiskMenuBarStyle.defaultsKey: style.rawValue],
+            ])
+            expect(restored?[DiskMenuBarStyle.defaultsKey] as? String == style.rawValue,
+                   "settings backup restores disk menu bar style \(style.rawValue)")
+        }
         expectEqual(DiskMenuBarStyle.percent.value(for: diskDevice), "67%", "disk menu bar used percentage")
         expectEqual(DiskMenuBarStyle.freePercent.value(for: diskDevice), "45%", "disk menu bar free percentage uses reported free bytes")
         expectEqual(DiskMenuBarStyle.freePercent.minimumValue, "100%", "free percentage reserves percentage width")
