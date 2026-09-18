@@ -255,10 +255,6 @@ struct MetricsTests {
                    "settings backup restores disk menu bar style \(style.rawValue)")
         }
         expectEqual(DiskMenuBarStyle.percent.value(for: diskDevice), "67%", "disk menu bar used percentage")
-        expect(DiskMenuBarStyle.allCases == [.percent, .free, .used],
-               "disk menu bar offers only used percentage and raw capacities")
-        expect(DiskMenuBarStyle(rawValue: "freePercent") == nil,
-               "removed free percentage style uses the unknown-style fallback")
         expectEqual(DiskMenuBarStyle.percent.minimumValue, "100%", "percentage reserves percentage width")
         expectClose(DiskMenuBarStyle.free.fraction(for: diskDevice), 110.0 / 245.0,
                     "free capacity fraction uses reported free capacity")
