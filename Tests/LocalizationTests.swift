@@ -45,7 +45,7 @@ enum LocalizationTests {
              strings.diskMenuBarAvailableSpace, strings.diskMenuBarUsedSpace]
         }
         let diskEnglish = diskPickerText(.enUS)
-        suite.expect(diskEnglish == ["Disk display", "Used percentage", "Free space", "Used space"],
+        suite.expect(diskEnglish == ["Disk display", "Used percentage", "Available space", "Used space"],
                      "disk picker uses a dedicated label and complete option names")
         for (language, strings) in languages {
             suite.expect(strings.diskMenuBarStyleLabel != FeatureStrings.menuBarAppearance(language).label,
