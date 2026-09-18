@@ -713,7 +713,7 @@ extension Strings {
         diskFree: "boş",
         diskMenuBarStyleLabel: "Disk görünümü",
         diskMenuBarUsedPercentage: "Kullanılan yüzde",
-        diskMenuBarAvailableSpace: "Boş alan",
+        diskMenuBarAvailableSpace: "Kullanılabilir alan",
         diskMenuBarUsedSpace: "Kullanılan alan",
         diskAvailable: "kullanılabilir",
         diskPurgeable: "silinebilir",

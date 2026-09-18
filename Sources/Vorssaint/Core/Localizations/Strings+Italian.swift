@@ -713,7 +713,7 @@ extension Strings {
         diskFree: "libero",
         diskMenuBarStyleLabel: "Visualizzazione disco",
         diskMenuBarUsedPercentage: "Percentuale utilizzata",
-        diskMenuBarAvailableSpace: "Spazio libero",
+        diskMenuBarAvailableSpace: "Spazio disponibile",
         diskMenuBarUsedSpace: "Spazio utilizzato",
         diskAvailable: "disponibile",
         diskPurgeable: "eliminabile",
