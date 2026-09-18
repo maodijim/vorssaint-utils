@@ -42,7 +42,7 @@ enum LocalizationTests {
         suite.expect(!factories.isEmpty, "feature localization factories were discovered")
         func diskPickerText(_ strings: Strings) -> [String] {
             [strings.diskMenuBarStyleLabel, strings.diskMenuBarUsedPercentage,
-             strings.diskMenuBarFreeSpace, strings.diskMenuBarUsedSpace]
+             strings.diskMenuBarAvailableSpace, strings.diskMenuBarUsedSpace]
         }
         let diskEnglish = diskPickerText(.enUS)
         suite.expect(diskEnglish == ["Disk display", "Used percentage", "Free space", "Used space"],

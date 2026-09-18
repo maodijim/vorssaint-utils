@@ -708,7 +708,7 @@ extension Strings {
         diskFree: "frei",
         diskMenuBarStyleLabel: "Festplattenanzeige",
         diskMenuBarUsedPercentage: "Belegter Anteil",
-        diskMenuBarFreeSpace: "Freier Speicherplatz",
+        diskMenuBarAvailableSpace: "Freier Speicherplatz",
         diskMenuBarUsedSpace: "Belegter Speicherplatz",
         diskAvailable: "verfügbar",
         diskPurgeable: "löschbar",

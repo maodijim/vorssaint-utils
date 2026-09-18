@@ -709,7 +709,7 @@ extension Strings {
         diskFree: "свободно",
         diskMenuBarStyleLabel: "Отображение диска",
         diskMenuBarUsedPercentage: "Процент занятого места",
-        diskMenuBarFreeSpace: "Свободное место",
+        diskMenuBarAvailableSpace: "Свободное место",
         diskMenuBarUsedSpace: "Занятое место",
         diskAvailable: "доступно",
         diskPurgeable: "очищаемый",

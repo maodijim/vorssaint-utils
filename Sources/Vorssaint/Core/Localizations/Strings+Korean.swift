@@ -709,7 +709,7 @@ extension Strings {
         diskFree: "사용 가능",
         diskMenuBarStyleLabel: "디스크 표시",
         diskMenuBarUsedPercentage: "사용률",
-        diskMenuBarFreeSpace: "여유 공간",
+        diskMenuBarAvailableSpace: "여유 공간",
         diskMenuBarUsedSpace: "사용 공간",
         diskAvailable: "사용 가능",
         diskPurgeable: "삭제 가능",

@@ -854,7 +854,7 @@ struct Strings {
     let diskFree: String
     let diskMenuBarStyleLabel: String
     let diskMenuBarUsedPercentage: String
-    let diskMenuBarFreeSpace: String
+    let diskMenuBarAvailableSpace: String
     let diskMenuBarUsedSpace: String
     let diskAvailable: String
     let diskPurgeable: String
@@ -1896,7 +1896,7 @@ extension Strings {
         diskFree: "livre",
         diskMenuBarStyleLabel: "Exibição do disco",
         diskMenuBarUsedPercentage: "Porcentagem usada",
-        diskMenuBarFreeSpace: "Espaço disponível",
+        diskMenuBarAvailableSpace: "Espaço disponível",
         diskMenuBarUsedSpace: "Espaço usado",
         diskAvailable: "disponível",
         diskPurgeable: "purgável",
@@ -2927,7 +2927,7 @@ extension Strings {
         diskFree: "free",
         diskMenuBarStyleLabel: "Disk display",
         diskMenuBarUsedPercentage: "Used percentage",
-        diskMenuBarFreeSpace: "Available space",
+        diskMenuBarAvailableSpace: "Available space",
         diskMenuBarUsedSpace: "Used space",
         diskAvailable: "available",
         diskPurgeable: "purgeable",

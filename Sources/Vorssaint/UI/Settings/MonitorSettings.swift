@@ -397,7 +397,7 @@ private struct DiskMenuBarOrderOption: View {
         if menuBarDiskUsage {
             Picker(l10n.s.diskMenuBarStyleLabel, selection: $diskStyle) {
                 Text(l10n.s.diskMenuBarUsedPercentage).tag(DiskMenuBarStyle.percent)
-                Text(l10n.s.diskMenuBarFreeSpace).tag(DiskMenuBarStyle.free)
+                Text(l10n.s.diskMenuBarAvailableSpace).tag(DiskMenuBarStyle.free)
                 Text(l10n.s.diskMenuBarUsedSpace).tag(DiskMenuBarStyle.used)
             }
             .pickerStyle(.menu)

@@ -708,7 +708,7 @@ extension Strings {
         diskFree: "可用",
         diskMenuBarStyleLabel: "磁盘显示",
         diskMenuBarUsedPercentage: "已用百分比",
-        diskMenuBarFreeSpace: "可用空间",
+        diskMenuBarAvailableSpace: "可用空间",
         diskMenuBarUsedSpace: "已用空间",
         diskAvailable: "可用",
         diskPurgeable: "可清除",
