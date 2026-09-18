@@ -73,17 +73,9 @@ enum DiskMenuBarStyle: String, CaseIterable {
 
     var minimumValue: String { showsPercentage ? "100%" : "1000 GB" }
 
-    func fraction(for disk: DiskDeviceReading) -> Double {
-        if self == .free {
-            guard disk.totalBytes > 0 else { return 0 }
-            return min(1, max(0, Double(disk.freeBytes) / Double(disk.totalBytes)))
-        }
-        return disk.usedFraction
-    }
-
     func value(for disk: DiskDeviceReading) -> String {
         switch self {
-        case .percent: return MetricFormat.percent(fraction(for: disk))
+        case .percent: return MetricFormat.percent(disk.usedFraction)
         case .free: return MetricFormat.diskBytes(disk.freeBytes)
         case .used: return MetricFormat.diskBytes(disk.usedBytes)
         }

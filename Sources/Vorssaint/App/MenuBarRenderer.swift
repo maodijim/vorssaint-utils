@@ -603,7 +603,7 @@ enum MenuBarRenderer {
                     let diskStyle = DiskMenuBarStyle.current
                     if usesBars && diskStyle.showsPercentage {
                         groups.append([.usageBarBlock(label: "DSK",
-                                                      fraction: diskStyle.fraction(for: disk),
+                                                      fraction: disk.usedFraction,
                                                       style: style,
                                                       pressure: nil)])
                     } else {
