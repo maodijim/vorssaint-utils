@@ -255,14 +255,17 @@ struct MetricsTests {
                    "settings backup restores disk menu bar style \(style.rawValue)")
         }
         expectEqual(DiskMenuBarStyle.percent.value(for: diskDevice), "67%", "disk menu bar used percentage")
-        expectEqual(DiskMenuBarStyle.freePercent.value(for: diskDevice), "45%", "disk menu bar free percentage uses reported free bytes")
-        expectEqual(DiskMenuBarStyle.freePercent.minimumValue, "100%", "free percentage reserves percentage width")
-        expectClose(DiskMenuBarStyle.freePercent.fraction(for: diskDevice), 110.0 / 245.0,
-                    "free percentage bar uses reported free capacity")
+        expect(DiskMenuBarStyle.allCases == [.percent, .free, .used],
+               "disk menu bar offers only used percentage and raw capacities")
+        expect(DiskMenuBarStyle(rawValue: "freePercent") == nil,
+               "removed free percentage style uses the unknown-style fallback")
+        expectEqual(DiskMenuBarStyle.percent.minimumValue, "100%", "percentage reserves percentage width")
+        expectClose(DiskMenuBarStyle.free.fraction(for: diskDevice), 110.0 / 245.0,
+                    "free capacity fraction uses reported free capacity")
         expectClose(DiskMenuBarStyle.percent.fraction(for: diskDevice), 163.0 / 245.0,
                     "used percentage bar preserves used capacity")
-        expect(DiskMenuBarStyle.freePercent.showsPercentage && DiskMenuBarStyle.percent.showsPercentage,
-               "both percentage options support bars")
+        expect(DiskMenuBarStyle.percent.showsPercentage,
+               "used percentage supports bars")
         expect(!DiskMenuBarStyle.free.showsPercentage && !DiskMenuBarStyle.used.showsPercentage,
                "raw capacity options remain numeric")
         expectEqual(DiskMenuBarStyle.free.value(for: diskDevice), "110 GB", "disk menu bar reports available bytes directly")
@@ -274,12 +277,12 @@ struct MetricsTests {
         expectEqual(DiskMenuBarStyle.percent.value(for: emptyDisk), "0%", "disk menu bar zero capacity")
         expectEqual(DiskMenuBarStyle.free.value(for: emptyDisk), "0 B", "disk menu bar zero free space")
         expectEqual(DiskMenuBarStyle.used.value(for: emptyDisk), "0 B", "disk menu bar zero used space")
-        expectEqual(DiskMenuBarStyle.freePercent.value(for: emptyDisk), "0%", "disk free percentage handles zero capacity")
+        expectClose(DiskMenuBarStyle.free.fraction(for: emptyDisk), 0, "disk free fraction handles zero capacity")
         emptyDisk.totalBytes = 100
         emptyDisk.freeBytes = 100
-        expectEqual(DiskMenuBarStyle.freePercent.value(for: emptyDisk), "100%", "disk free percentage handles entirely free disk")
+        expectClose(DiskMenuBarStyle.free.fraction(for: emptyDisk), 1, "disk free fraction handles entirely free disk")
         emptyDisk.freeBytes = 200
-        expectEqual(DiskMenuBarStyle.freePercent.value(for: emptyDisk), "100%", "disk free percentage clamps inconsistent readings")
+        expectClose(DiskMenuBarStyle.free.fraction(for: emptyDisk), 1, "disk free fraction clamps inconsistent readings")
         expect(diskDevice.purgeableBytes == 28_000_000_000, "disk reading preserves purgeable bytes")
         expectClose(diskDevice.usedFraction, 163.0 / 245.0, "disk used fraction reflects physical used bytes")
 

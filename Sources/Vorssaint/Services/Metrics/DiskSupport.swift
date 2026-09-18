@@ -61,7 +61,7 @@ struct DiskDeviceReading: Identifiable, Equatable {
 }
 
 enum DiskMenuBarStyle: String, CaseIterable {
-    case percent, freePercent, free, used
+    case percent, free, used
 
     static let defaultsKey = DefaultsKey.menuBarDiskStyle
 
@@ -69,12 +69,12 @@ enum DiskMenuBarStyle: String, CaseIterable {
         DiskMenuBarStyle(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "") ?? .percent
     }
 
-    var showsPercentage: Bool { self == .percent || self == .freePercent }
+    var showsPercentage: Bool { self == .percent }
 
     var minimumValue: String { showsPercentage ? "100%" : "1000 GB" }
 
     func fraction(for disk: DiskDeviceReading) -> Double {
-        if self == .freePercent || self == .free {
+        if self == .free {
             guard disk.totalBytes > 0 else { return 0 }
             return min(1, max(0, Double(disk.freeBytes) / Double(disk.totalBytes)))
         }
@@ -83,7 +83,7 @@ enum DiskMenuBarStyle: String, CaseIterable {
 
     func value(for disk: DiskDeviceReading) -> String {
         switch self {
-        case .percent, .freePercent: return MetricFormat.percent(fraction(for: disk))
+        case .percent: return MetricFormat.percent(fraction(for: disk))
         case .free: return MetricFormat.diskBytes(disk.freeBytes)
         case .used: return MetricFormat.diskBytes(disk.usedBytes)
         }
