@@ -27,6 +27,11 @@ struct NotchNotice: Equatable {
     var accessibilityText: String {
         notification?.accessibilityText ?? [title, detail].filter { !$0.isEmpty }.joined(separator: ", ")
     }
+
+    func previewContentHeight(width: CGFloat) -> CGFloat {
+        guard let notification else { return 0 }
+        return NotchNotificationPreviewLayout.contentHeight(for: notification, width: width)
+    }
 }
 
 /// Owns presentation only. Clipboard, files, captures, audio and metrics keep
@@ -53,7 +58,11 @@ final class NotchService: ObservableObject {
     @Published var highlightedSection: NotchModule?
     @Published private(set) var modules: [NotchModule] = []
     @Published private(set) var notice: NotchNotice?
+    @Published private(set) var noticeExpanded = false
     @Published private(set) var captureContent: AnyView?
+    /// Bumped when Command-W asks the Scratchpad page to close its selected
+    /// pad, so the confirmation stays in the page as it does in the floating pad.
+    @Published private(set) var scratchpadCloseSerial = 0
     @Published private var captureContentHeight: CGFloat?
     @Published private(set) var power = PowerReading()
     @Published private var musicDetailVisible = false
@@ -154,20 +163,23 @@ final class NotchService: ObservableObject {
 
     var expandedSize: CGSize {
         if showingSections {
-            return geometry.sectionPickerSize(count: filteredSections.count, searching: !sectionQuery.isEmpty)
+            return geometry.sectionPickerSize(count: filteredSections.count)
         }
         let controls = NotchSupport.controls()
         let sliders = controls.filter { $0 == .volume || $0 == .brightness }.count
         let shortcuts = controls.filter { $0 != .volume && $0 != .brightness && $0 != .music }.count
         let musicExtras = NotchLyricsSupport.isEnabled() || NotchQueueSupport.isEnabled()
+        let launcher = QuickLauncherService.shared
         return geometry.expandedSize(module: showingAppPanel ? .tools : selected,
-                                     detail: selectedMetric != nil, controlRows: (shortcuts + geometry.controlColumns - 1) / geometry.controlColumns,
+                                     detail: selectedMetric != nil, panel: showingAppPanel, shortcutCount: shortcuts,
                                      sliderCount: sliders, controlsHaveMusic: controls.contains(.music), musicHasContent: NotchMusicService.shared.playback != nil,
-                                     musicExtraHeight: musicExtras ? (musicDetailVisible ? 260 : 44) : 0,
+                                     musicHasControlsRow: AppFeature.mixer.isAvailable || musicExtras,
+                                     musicExtraHeight: musicExtras && musicDetailVisible ? geometry.musicExtrasHeight : 0,
                                      fileMediaHeight: !choosingFileDropDestination && AppFeature.mediaTools.isAvailable
                                         && NotchFileToolsService.shared.mediaPresented ? NotchFileToolsService.shared.mediaContentHeight : nil,
-                                     systemRows: (NotchSupport.systemCardCount(hasBattery: PowerSampler.hasInternalBattery)
-                                        + geometry.systemColumns - 1) / geometry.systemColumns,
+                                     systemCards: NotchSupport.systemCardCount(hasBattery: PowerSampler.hasInternalBattery,
+                                                                               fans: SystemMonitor.shared.snapshot.fanSpeeds.count),
+                                     toolCount: launcher.isEditing || launcher.activeUtility != nil ? nil : launcher.visibleItems.count,
                                      capturePreviewHeight: captureContent == nil ? nil : captureContentHeight,
                                      timerHasSession: NotchTimerService.shared.session.hasSession,
                                      timerMode: NotchTimerService.shared.session.hasSession
@@ -185,7 +197,11 @@ final class NotchService: ObservableObject {
         }
         if expanded { return expandedSize }
         if dragPlaceholder { return CGSize(width: geometry.peek.width, height: geometry.safeContentTop + 66) }
-        if let notice { return geometry.noticeSize(wingWidth: notice.preferredWingWidth) }
+        if let notice {
+            guard noticeExpanded else { return geometry.noticeSize(wingWidth: notice.preferredWingWidth) }
+            return geometry.notificationPreviewSize(
+                contentHeight: notice.previewContentHeight(width: geometry.notificationPreviewContentWidth))
+        }
         if peeking { return geometry.peek }
         if compactActivity != nil { return compactActivityGeometry.compactActivitySize }
         return geometry.restingSize(showsContent: idleContent != .none)
@@ -248,6 +264,7 @@ final class NotchService: ObservableObject {
         let signature = NotchEvent.allCases.map { String(NotchSupport.routes($0)) }.joined()
             + NotchSupport.idleContent().rawValue + String(NotchSupport.watchesMusicActivity())
             + modules.map(\.rawValue).joined()
+            + String(AppFeature.fanControl.isAvailable)
             + String(NotchSupport.routesShelf()) + String(NotchSupport.revealsShelfDrag())
             + String(NotchSupport.routesCaptureControls())
         if signature != settingsSignature {
@@ -261,7 +278,7 @@ final class NotchService: ObservableObject {
             fallback?()
         }
         if captureControls != nil, !NotchSupport.routesCaptureControls() { cancelCaptureControls() }
-        if let notice, !NotchSupport.routes(notice.event) { dismissNotice() }
+        syncNoticeWithPreferences()
         syncVisibleConsumers()
         refreshPresentation(animated: false)
         if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
@@ -331,6 +348,7 @@ final class NotchService: ObservableObject {
         selectedMetric = nil
         pinned = false
         notice = nil
+        noticeExpanded = false
         showingAppPanel = false
         showingSections = false
         sectionQuery = ""
@@ -347,16 +365,27 @@ final class NotchService: ObservableObject {
         windowHost = nil
     }
 
+    /// Opening without a page shows what the closed island is already
+    /// presenting. Only at rest does the reopening preference decide.
+    var reopeningModule: NotchModule {
+        if !expanded {
+            let activity = notice?.notificationID != nil ? NotchModule.notifications : compactActivity?.module
+            if let activity, modules.contains(activity) { return activity }
+            if UserDefaults.standard.bool(forKey: DefaultsKey.notchReturnHome) {
+                let home = NotchModule(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.notchHomeModule) ?? "") ?? .controls
+                return modules.contains(home) ? home : modules.first ?? .controls
+            }
+        }
+        return selected
+    }
+
     func open(_ module: NotchModule? = nil, pinned: Bool = false, takeFocus: Bool = true,
               appPanel: Bool = false, metric: MetricDetailKind? = nil, feedback: Bool = true, sections: Bool = false) {
         guard NotchSupport.isEnabled(), !suspended else { return }
         if !running || self.panel == nil { syncWithPreferences() }
         else { refreshModules() }
         guard let panel else { return }
-        let returnHome = !expanded && UserDefaults.standard.bool(forKey: DefaultsKey.notchReturnHome)
-        let home = NotchModule(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.notchHomeModule) ?? "") ?? .controls
-        let fallback = returnHome ? (modules.contains(home) ? home : modules.first ?? .controls) : selected
-        let destination = module.flatMap { modules.contains($0) ? $0 : nil } ?? fallback
+        let destination = module.flatMap { modules.contains($0) ? $0 : nil } ?? reopeningModule
         let metric = metric.flatMap { metricIsAvailable($0) ? $0 : nil }
         let changesPresentation = !expanded || selected != destination
             || showingAppPanel != appPanel || selectedMetric != metric || showingSections != sections
@@ -377,6 +406,9 @@ final class NotchService: ObservableObject {
             peeking = false
             openedByHover = !takeFocus
             expanded = true
+            // The open island covers a mirrored banner, and the inbox keeps
+            // the message; a held one must not reappear after collapsing.
+            if notice?.notificationID != nil { noticeWork?.cancel(); noticeWork = nil; notice = nil; noticeExpanded = false }
         }
         inside = windowHost?.containsHover(NSEvent.mouseLocation) == true
         installEventMonitors()
@@ -390,7 +422,9 @@ final class NotchService: ObservableObject {
         hoverState.close(pointerInside: windowHost?.containsHover(NSEvent.mouseLocation) == true)
         pinned = false
         hoverWork?.cancel(); hoverWork = nil
-        mutatePresentation(transitionContent: expanded || peeking ? .dismiss : .none) {
+        if noticeExpanded { noticeWork?.cancel(); noticeWork = nil }
+        mutatePresentation(transitionContent: expanded || peeking || noticeExpanded ? .dismiss : .none) {
+            if noticeExpanded { notice = nil; noticeExpanded = false }
             expanded = false
             openedByHover = false
             peeking = false
@@ -435,6 +469,8 @@ final class NotchService: ObservableObject {
         }
         guard !pinned, !heldDrag, !keepsWorkingSurface else {
             hoverWork?.cancel(); hoverWork = nil
+            // A dialog or menu keeps the island, not a banner the pointer left.
+            if !inside { releaseNotification() }
             return
         }
         // Overlapping tracking areas can report the same presence repeatedly.
@@ -442,6 +478,7 @@ final class NotchService: ObservableObject {
         if inside == wasInside, let hoverWork, !hoverWork.isCancelled { return }
         hoverWork?.cancel(); hoverWork = nil
         if inside {
+            if holdsNotification, let id = notice?.notificationID { holdNotification(id); return }
             guard !hoverState.suppressed, (notice == nil || hiddenUntilHover), !expanded, !peeking, !dragPlaceholder,
                   UserDefaults.standard.bool(forKey: DefaultsKey.notchOpenOnHover) else { return }
             if compactActivity != nil, compactActivityGeometry.compactActivityWingWidth > 0,
@@ -464,20 +501,71 @@ final class NotchService: ObservableObject {
             hoverWork = work
             let delay = NotchSupport.sanitizedHoverDelay(UserDefaults.standard.double(forKey: DefaultsKey.notchHoverDelay))
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
-        } else if NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover) {
+        } else if holdsNotification
+                    || NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover) {
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.hoverWork = nil
-                guard self.running, !self.suspended, !self.inside, !self.pinned, !self.heldDrag, !self.keepsWorkingSurface,
-                      self.captureControls == nil,
-                      self.windowHost?.containsHover(NSEvent.mouseLocation) != true,
+                guard self.running, !self.suspended, !self.inside,
+                      self.windowHost?.containsHover(NSEvent.mouseLocation) != true else { return }
+                self.releaseNotification()
+                guard !self.pinned, !self.heldDrag, !self.keepsWorkingSurface, self.captureControls == nil,
                       !AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation),
                       NotchSupport.closesOnPointerExit(expanded: self.expanded, peeking: self.peeking, openedByHover: self.openedByHover) else { return }
                 self.collapse()
             }
             hoverWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + (expanded ? NotchQuickAccessLayout.hoverExitDelay : 0.12), execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (expanded || noticeExpanded ? NotchQuickAccessLayout.hoverExitDelay : 0.12), execute: work)
         }
+    }
+
+    /// A mirrored banner the pointer can hold: on screen and not covered.
+    /// Hidden mode keeps its notices out of reach, as the surface is not shown.
+    private var holdsNotification: Bool {
+        notice?.notificationID != nil && noticeCanPresent && !hiddenUntilHover
+    }
+
+    /// A mirrored banner waits under the pointer, as the native one does, and
+    /// a deliberate hover opens its whole message in place.
+    private func holdNotification(_ id: UUID) {
+        noticeWork?.cancel(); noticeWork = nil
+        guard !noticeExpanded, !hoverState.suppressed,
+              UserDefaults.standard.bool(forKey: DefaultsKey.notchOpenOnHover) else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.hoverWork = nil
+            guard self.running, !self.suspended, self.inside, !self.hoverState.suppressed, !self.pinned, !self.heldDrag,
+                  !self.keepsWorkingSurface, self.holdsNotification, self.notice?.notificationID == id, !self.noticeExpanded,
+                  UserDefaults.standard.bool(forKey: DefaultsKey.notchOpenOnHover),
+                  self.geometry.contains(NSEvent.mouseLocation, in: self.surfaceSize) else { return }
+            self.mutatePresentation(transitionContent: .reveal) { self.peeking = false; self.noticeExpanded = true }
+            self.provideHapticFeedback()
+        }
+        hoverWork = work
+        let delay = NotchSupport.sanitizedHoverDelay(UserDefaults.standard.double(forKey: DefaultsKey.notchHoverDelay))
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// Leaving closes an opened preview; a banner that was only held gets its
+    /// full time again, so a quick pass over it never cuts it short.
+    private func releaseNotification() {
+        guard let notice, notice.notificationID != nil else { return }
+        if noticeExpanded { dismissNotice() }
+        else if noticeWork == nil { scheduleNoticeDismissal(after: notice.event.duration) }
+    }
+
+    private func syncNoticeWithPreferences() {
+        guard let notice else { return }
+        if !NotchSupport.routes(notice.event) || (notice.notificationID != nil && hiddenUntilHover) {
+            dismissNotice()
+        }
+    }
+
+    private func scheduleNoticeDismissal(after duration: TimeInterval) {
+        noticeWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.dismissNotice() }
+        noticeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
     }
 
     var filteredSections: [NotchModule] {
@@ -531,9 +619,38 @@ final class NotchService: ObservableObject {
         }
         let sections = filteredSections
         guard !sections.isEmpty else { return true }
+        // While typing, the side arrows keep editing the query and the
+        // vertical pair steps through the matches in order.
+        guard sectionQuery.isEmpty else {
+            highlightedSection = NotchSupport.adjacentModule(to: highlightedSection, modules: sections,
+                                                             backwards: direction == .up)
+            return true
+        }
         let index = highlightedSection.flatMap { sections.firstIndex(of: $0) } ?? 0
         highlightedSection = sections[QuickToolsSupport.gridIndex(after: index, count: sections.count,
-                                                                   columns: sectionQuery.isEmpty ? geometry.sectionColumns : 1, direction: direction)]
+                                                                   flow: .columns(rows: geometry.sectionRows(count: sections.count)),
+                                                                   direction: direction)]
+        return true
+    }
+
+    /// The floating pad's tab shortcuts work on its page too. With one pad
+    /// left, Command-W closes the island the way it hides the pad.
+    private func handleScratchpadKey(_ event: NSEvent) -> Bool {
+        guard selected == .scratchpad, !showingAppPanel, !showingSections, selectedMetric == nil else { return false }
+        let pad = ScratchpadService.shared
+        let commandOnly = event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command
+        guard let action = ScratchpadFocusedTabShortcut.action(charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+                                                               commandOnly: commandOnly,
+                                                               canCreatePad: pad.canCreatePad,
+                                                               canClosePad: pad.canClosePad) else {
+            // At the tab limit Command-T still belongs to the pad, not the text.
+            return commandOnly && event.charactersIgnoringModifiers?.lowercased() == "t"
+        }
+        switch action {
+        case .createPad: pad.createPad(defaultName: FeatureStrings.scratchpad(L10n.shared.language).pageTitle)
+        case .closeSelectedPad: scratchpadCloseSerial += 1
+        case .hidePad: collapse()
+        }
         return true
     }
 
@@ -557,6 +674,7 @@ final class NotchService: ObservableObject {
             case .timer: select(.timer)
             case .calendar: select(.calendar)
             case .commandBar: perform { CommandBarService.shared.show() }
+            case .scratchpad: openScratchpad()
             case .volume, .brightness: select(.controls)
             }
         }
@@ -565,6 +683,13 @@ final class NotchService: ObservableObject {
     func select(_ module: NotchModule) {
         guard modules.contains(module) else { return }
         open(module)
+    }
+
+    /// The pad lives in the island when its page is on; otherwise the
+    /// shortcut opens the floating pad as it always did.
+    func openScratchpad() {
+        if modules.contains(.scratchpad) { open(.scratchpad) }
+        else { perform { ScratchpadService.shared.show() } }
     }
 
     func openAppPanel(toggle: Bool = false) {
@@ -640,6 +765,7 @@ final class NotchService: ObservableObject {
         showingSections = false
         peeking = false
         notice = nil
+        noticeExpanded = false
         hoverWork?.cancel()
         removeEventMonitors()
         panel?.acceptsKeyFocus = true
@@ -853,16 +979,27 @@ final class NotchService: ObservableObject {
     @discardableResult
     func show(_ incoming: NotchNotice) -> Bool {
         guard showsSystemFeedback, NotchSupport.routes(incoming.event),
-              NotchSupport.shouldReplace(notice?.event, with: incoming.event) else { return false }
-        noticeWork?.cancel()
+              NotchSupport.shouldReplace(notice?.event, with: incoming.event, held: noticeExpanded) else { return false }
+        noticeWork?.cancel(); noticeWork = nil
+        let keepsPreview = noticeExpanded && incoming.notificationID != nil
+            && windowHost?.containsHover(NSEvent.mouseLocation) == true
         // Slider and key bursts only replace the displayed value. They never
         // restart a window resize or enqueue another layout animation.
         let transition: NotchContentTransition = !noticeCanPresent ? .none
-            : notice == nil ? .reveal : notice?.event != incoming.event ? .replace : .none
-        mutatePresentation(transitionContent: transition) { notice = incoming }
-        let work = DispatchWorkItem { [weak self] in self?.dismissNotice() }
-        noticeWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + incoming.event.duration, execute: work)
+            : notice == nil ? .reveal : notice?.event != incoming.event || noticeExpanded ? .replace : .none
+        mutatePresentation(transitionContent: transition) {
+            notice = incoming
+            noticeExpanded = keepsPreview
+        }
+        // A banner arriving under the pointer is held at once, whether the
+        // pointer was already inside or an opening was pending.
+        if let id = incoming.notificationID, holdsNotification, windowHost?.containsHover(NSEvent.mouseLocation) == true {
+            hoverWork?.cancel(); hoverWork = nil
+            inside = true
+            holdNotification(id)
+        } else {
+            scheduleNoticeDismissal(after: incoming.event.duration)
+        }
         return true
     }
 
@@ -870,6 +1007,9 @@ final class NotchService: ObservableObject {
         guard notice == selectedNotice else { return }
         if let id = selectedNotice.notificationID {
             guard NotchNotificationService.shared.openingID == nil else { return }
+            // The pointer stays where the banner was; like a click on the
+            // island itself, this must not turn into a hover opening.
+            settleNotificationHover()
             NotchNotificationService.shared.open(id) { [weak self] result in
                 guard let self else { return }
                 if self.notice?.notificationID == id { self.dismissNotice() }
@@ -898,13 +1038,29 @@ final class NotchService: ObservableObject {
                                 symbol: "keyboard", level: level))
     }
 
+    /// The close button of a held preview also takes the message out of the
+    /// inbox, like the close button of the inbox row.
+    func dismissNotification(_ selectedNotice: NotchNotice) {
+        guard notice == selectedNotice, let id = selectedNotice.notificationID else { return }
+        settleNotificationHover()
+        NotchNotificationService.shared.dismiss(id)
+        dismissNotice()
+    }
+
+    private func settleNotificationHover() {
+        hoverWork?.cancel(); hoverWork = nil
+        hoverState.close(pointerInside: windowHost?.containsHover(NSEvent.mouseLocation) == true)
+    }
+
     private func dismissNotice() {
         noticeWork?.cancel(); noticeWork = nil
         let transition: NotchContentTransition = notice != nil && noticeCanPresent ? .dismiss : .none
-        mutatePresentation(transitionContent: transition) { notice = nil }
+        mutatePresentation(transitionContent: transition) { notice = nil; noticeExpanded = false }
     }
 
-    private var noticeCanPresent: Bool { !expanded && !dragPlaceholder && captureControls == nil }
+    private var noticeCanPresent: Bool {
+        !expanded && !dragPlaceholder && captureControls == nil
+    }
 
     func presentCapture(id: UUID, content: AnyView, height: CGFloat, fallback: @escaping () -> Void,
                         close: @escaping () -> Void, hover: @escaping (Bool) -> Void) -> Bool {
@@ -1103,6 +1259,14 @@ final class NotchService: ObservableObject {
     }
 
     private func syncMenuSpaceMonitoring() {
+        if running, !suspended, NotchSupport.coversMenus() {
+            // Nothing to measure: the island keeps the room an empty bar
+            // would leave it, over whatever menus and status items are there.
+            stopMenuSpaceMonitoring()
+            applyMenuSpace(NotchMenuBarLayout.sideRoom(screen: geometry.screen, cameraWidth: geometry.cameraWidth,
+                                                       barHeight: geometry.menuBarHeight, occupied: []))
+            return
+        }
         guard AXIsProcessTrusted() else {
             stopMenuSpaceMonitoring()
             if geometry.compactSideRoom != nil {
@@ -1355,11 +1519,21 @@ final class NotchService: ObservableObject {
                     return nil
                 }
                 if self.handleSectionKey(event) { return nil }
+                if self.handleScratchpadKey(event) { return nil }
             }
             if event.type == .keyDown, event.window === self.panel, self.selected == .tools, !self.showingAppPanel, !self.showingSections {
-                return QuickLauncherService.shared.handlePanelKey(event, columns: NotchSupport.toolColumns)
+                let launcher = QuickLauncherService.shared
+                // The rail fills columns; the editing grid keeps its rows.
+                let flow: QuickToolsSupport.GridFlow = launcher.isEditing
+                    ? .rows(columns: NotchSupport.toolColumns)
+                    : .columns(rows: self.geometry.toolRows(count: launcher.visibleItems.count))
+                return launcher.handlePanelKey(event, flow: flow)
             }
             if event.type == .keyDown, event.window === self.panel, event.keyCode == 53 {
+                // A level being typed in the mixer cancels on Escape by
+                // itself; the island collapses on the next one.
+                if let editor = self.panel?.firstResponder as? NSTextView, editor.isFieldEditor,
+                   (editor.delegate as AnyObject?) is MixerPercentNativeTextField { return event }
                 self.collapse()
                 return nil
             }
@@ -1446,6 +1620,29 @@ final class NotchService: ObservableObject {
                     self?.syncMenuSpaceMonitoring()
                     self?.objectWillChange.send()
                     self?.refreshPresentation()
+                }.store(in: &subscriptions)
+        }
+        if modules.contains(.tools) {
+            // The tools page is a rail sized by its tiles; editing or a
+            // hosted utility turns it into a page.
+            let launcher = QuickLauncherService.shared
+            launcher.$isEditing.map { _ in () }
+                .merge(with: launcher.$activeUtility.map { _ in () }, launcher.$hiddenItemsRaw.map { _ in () })
+                .dropFirst(3).receive(on: DispatchQueue.main)
+                .sink { [weak self] in
+                    guard let self, self.expanded, self.selected == .tools, !self.showingAppPanel, !self.showingSections else { return }
+                    self.refreshPresentation()
+                }.store(in: &subscriptions)
+        }
+        if modules.contains(.system), AppFeature.fanControl.isAvailable {
+            // The fan card only exists once the page's first sample lands; the
+            // strip that was sized without it reserves its row again.
+            SystemMonitor.shared.$snapshot.map { $0.fanSpeeds.isEmpty }.removeDuplicates().dropFirst()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self, self.expanded, self.selected == .system, self.selectedMetric == nil,
+                          !self.showingAppPanel, !self.showingSections else { return }
+                    self.refreshPresentation()
                 }.store(in: &subscriptions)
         }
         if NotchSupport.routes(.download) {
@@ -1586,6 +1783,7 @@ final class NotchService: ObservableObject {
         let needs = expanded && selected == .system && selectedMetric == nil && modules.contains(.system) && !showingAppPanel && !showingSections
         var detailNeeds = expanded && !showingSections ? selectedMetric?.monitorNeeds ?? .none : .none
         if needs, AppFeature.monitorDisk.isAvailable { detailNeeds.disk = true }
+        if needs, AppFeature.fanControl.isAvailable { detailNeeds.fanSpeed = true }
         SystemMonitor.shared.setNotchDetailNeeds(detailNeeds)
         if needs != notchNeedsMonitor {
             notchNeedsMonitor = needs
