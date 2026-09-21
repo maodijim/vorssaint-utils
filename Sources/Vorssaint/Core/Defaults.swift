@@ -730,6 +730,7 @@ enum DefaultsKey {
     static let notchEnabled = "notchEnabled"
     static let notchDisplay = "notchDisplay"
     static let notchOpenOnHover = "notchOpenOnHover"
+    static let notchHideInFullscreen = "notchHideInFullscreen"
     static let notchHideUntilHover = "notchHideUntilHover"
     static let notchCoversMenus = "notchCoversMenus"
     static let notchHoverDelay = "notchHoverDelay"
@@ -1198,6 +1199,7 @@ enum Defaults {
         DefaultsKey.notchEnabled: false,
         DefaultsKey.notchDisplay: NotchDisplay.automatic.rawValue,
         DefaultsKey.notchOpenOnHover: true,
+        DefaultsKey.notchHideInFullscreen: false,
         DefaultsKey.notchHideUntilHover: false,
         DefaultsKey.notchCoversMenus: false,
         DefaultsKey.notchHoverDelay: NotchSupport.defaultHoverDelay,
