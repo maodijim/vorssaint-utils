@@ -21,12 +21,14 @@ struct NotchNoticeView: View {
     var body: some View {
         HStack(spacing: 0) {
             leading
-                .padding(.horizontal, inset)
+                .padding(.leading, inset)
+                .padding(.trailing, notice.event == .battery ? 16 : 0)
                 .frame(width: wingWidth, height: geometry.stripHeight)
                 .clipped()
             Color.clear.frame(width: geometry.noticeCameraGap)
             trailing
-                .padding(.horizontal, inset)
+                .padding(.trailing, inset)
+                .padding(.leading, notice.event == .battery ? 16 : 0)
                 .frame(width: wingWidth, height: geometry.stripHeight)
                 .clipped()
         }
@@ -55,9 +57,10 @@ struct NotchNoticeView: View {
                     .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
                     .lineLimit(1)
+                    .truncationMode(.middle)
                     .contentTransition(.numericText())
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .trailing)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: notice.detail)
             .transaction { $0.disablesAnimations = false }
         }
@@ -81,5 +84,27 @@ struct NotchNoticeView: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// Level feedback occupies the header while the current page stays usable.
+struct NotchExpandedLevelView: View {
+    let notice: NotchNotice
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: notice.symbol)
+                .frame(width: 18)
+            NotchMeter(value: notice.level ?? 0, height: 5,
+                       tint: notice.event == .volume ? .white : .yellow)
+                .frame(maxWidth: 96)
+            Text(notice.detail)
+                .monospacedDigit()
+                .fixedSize()
+        }
+        .font(.system(size: 11, weight: .medium))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(notice.accessibilityText)
     }
 }

@@ -59,9 +59,10 @@ final class NotchWindowHost: NSObject, CAAnimationDelegate {
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
         panel.level = NotchPanel.normalLevel
-        // Stationary and transient are mutually exclusive. Keep the island
-        // anchored when the desktop is revealed, outside the system's window motion.
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        // Transient overlays float across Spaces. Stationary windows follow
+        // the desktop's transition; the two behaviors are mutually exclusive.
+        // AppKit hides a transient overlay while Mission Control is open.
+        panel.collectionBehavior = NotchPanel.overlayCollectionBehavior
         panel.contentView = quickAccessContainer ?? canvas
         canvas.layoutSubtreeIfNeeded()
         appliedFrame = panel.frame
@@ -101,7 +102,7 @@ final class NotchWindowHost: NSObject, CAAnimationDelegate {
         }
         let canAnimate = animated && (isPresented || revealing) && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let previousGutter = quickAccessConfiguration == nil ? 0 : NotchQuickAccessLayout.gutter
-        let previousBottom: CGFloat = quickAccessConfiguration?.hasBottom == true ? NotchQuickAccessLayout.gutter : 0
+        let previousBottom = quickAccessBottomInset(for: targetSize, geometry: currentGeometry)
         let previousFrame = currentGeometry.frame(for: CGSize(width: targetSize.width + previousGutter * 2, height: targetSize.height + previousBottom))
         let withdrawing = !revealing && quickAccessConfiguration != nil && quickAccess == nil
         if revealing { quickAccessContainer?.motion.setVisible(false, animated: false) }
@@ -110,7 +111,7 @@ final class NotchWindowHost: NSObject, CAAnimationDelegate {
         if quickAccessConfiguration != nil { quickAccessNotchSize = size }
         if withdrawing { quickAccessContainer?.motion.setVisible(false, animated: canAnimate) }
         let gutter = quickAccessConfiguration == nil ? 0 : NotchQuickAccessLayout.gutter
-        let bottom: CGFloat = quickAccessConfiguration?.hasBottom == true ? NotchQuickAccessLayout.gutter : 0
+        let bottom = quickAccessBottomInset(for: size, geometry: geometry)
         let frame = geometry.frame(for: CGSize(width: size.width + gutter * 2, height: size.height + bottom))
         let changesFrame = revealing || (hideWhenSettled && !canAnimate) || size != targetSize
             || frame != previousFrame || (!isAnimating && panel.frame != appliedFrame)
@@ -197,7 +198,7 @@ final class NotchWindowHost: NSObject, CAAnimationDelegate {
     private func settle() {
         let generation = animationGeneration
         let gutter: CGFloat = quickAccessConfiguration == nil ? 0 : NotchQuickAccessLayout.gutter
-        let bottom: CGFloat = quickAccessConfiguration?.hasBottom == true ? NotchQuickAccessLayout.gutter : 0
+        let bottom = quickAccessBottomInset(for: targetSize, geometry: currentGeometry)
         // A departing island is ordered out below; its released bounds are never shown.
         let concealed = !hidesWhenSettled
             && concealForFrameChange(to: reservedFrame(mainSize: targetSize, gutter: gutter, bottom: bottom), generation: generation)
@@ -226,6 +227,19 @@ final class NotchWindowHost: NSObject, CAAnimationDelegate {
 
     private func reservedFrame(mainSize: CGSize, gutter: CGFloat, bottom: CGFloat) -> CGRect {
         currentGeometry.frame(for: CGSize(width: mainSize.width + gutter * 2, height: mainSize.height + bottom))
+    }
+
+    /// Short pages may end above the last side button. Keep its circle and
+    /// hover margin inside the window without enlarging the island's surface.
+    private func quickAccessBottomInset(for size: CGSize, geometry: NotchGeometry) -> CGFloat {
+        guard let configuration = quickAccessConfiguration else { return 0 }
+        let sideCount = max(configuration.buttons.filter { $0.side == .left }.count,
+                            configuration.buttons.filter { $0.side == .right }.count)
+        let sideBottom = sideCount > 0
+            ? geometry.quickAccessCenterY + CGFloat(sideCount - 1) * NotchQuickAccessLayout.rowSpacing
+                + NotchQuickAccessLayout.diameter / 2 + NotchQuickAccessLayout.hoverMargin
+            : 0
+        return max(configuration.hasBottom ? NotchQuickAccessLayout.gutter : 0, sideBottom - size.height)
     }
 
     /// Mission Control switches the window server into a mode where every
@@ -287,7 +301,7 @@ final class NotchWindowHost: NSObject, CAAnimationDelegate {
         let body = CGRect(x: (panel.frame.width - quickAccessNotchSize.width) / 2 + shoulder, y: 0,
                           width: quickAccessNotchSize.width - shoulder * 2, height: quickAccessNotchSize.height)
         container.motion.configure(configuration, body: body,
-                                   headerTop: currentGeometry.safeContentTop + NotchLayout.headerHeight / 2,
+                                   headerTop: currentGeometry.quickAccessCenterY,
                                    animated: quickAccessAnimate)
         container.setHoverRects(container.motion.hoverRects.map { $0.intersection(container.bounds) })
     }
@@ -322,11 +336,15 @@ final class NotchWindowHost: NSObject, CAAnimationDelegate {
         currentGeometry.frame(for: canvas.visiblePath?.boundingBoxOfPath.size ?? targetSize)
     }
 
-    func contains(_ screenPoint: CGPoint) -> Bool {
+    /// The island's own surface, without the floating controls beside it.
+    func containsSurface(_ screenPoint: CGPoint) -> Bool {
         guard isPresented else { return false }
-        let local = canvas.convert(panel.convertPoint(fromScreen: screenPoint), from: nil)
-        if canvas.containsVisiblePoint(local) { return true }
-        guard let container = quickAccessContainer else { return false }
+        return canvas.containsVisiblePoint(canvas.convert(panel.convertPoint(fromScreen: screenPoint), from: nil))
+    }
+
+    func contains(_ screenPoint: CGPoint) -> Bool {
+        if containsSurface(screenPoint) { return true }
+        guard isPresented, let container = quickAccessContainer else { return false }
         return container.motion.contains(container.convert(panel.convertPoint(fromScreen: screenPoint), from: nil))
     }
 
@@ -471,6 +489,9 @@ private final class NotchFrameProbe {
 }
 
 final class NotchPanel: NSPanel {
+    static let overlayCollectionBehavior: NSWindow.CollectionBehavior = [
+        .canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle
+    ]
     // Status items own the screen edge at their level, even when our view's
     // hit test includes it. Keep the island above them, below native menus.
     static let normalLevel = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
