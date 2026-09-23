@@ -54,6 +54,7 @@ enum DefaultsKey {
     static let smoothScrollStep = "smoothScrollStep"      // pixels per wheel tick
     static let mouseAccelerationDisabled = "mouseAccelerationDisabled" // sets HIDMouseAcceleration to -1 for mice
     static let smoothScrollResponse = "smoothScrollResponse" // 0...100, higher follows the wheel sooner
+    static let smoothScrollCoast = "smoothScrollCoast" // 0...100, higher coasts the same distance out longer
     static let mouseNavigationEnabled = "mouseNavigationEnabled" // side buttons trigger Back and Forward
     static let mouseButtonShortcutsEnabled = "mouseButtonShortcutsEnabled" // extra buttons press a key combination (issue #282)
     static let mouseButtonShortcuts = "mouseButtonShortcuts" // [button number: GlobalShortcut storage value]
@@ -671,6 +672,19 @@ enum DefaultsKey {
     static let windowLayoutShortcutLeftTwoThirds = "windowLayoutShortcutLeftTwoThirds"
     static let windowLayoutShortcutRightTwoThirds = "windowLayoutShortcutRightTwoThirds"
     static let windowLayoutShortcutCenterTwoThirds = "windowLayoutShortcutCenterTwoThirds"
+    static let windowLayoutShortcutTopThird = "windowLayoutShortcutTopThird"
+    static let windowLayoutShortcutMiddleThird = "windowLayoutShortcutMiddleThird"
+    static let windowLayoutShortcutBottomThird = "windowLayoutShortcutBottomThird"
+    static let windowLayoutShortcutTopTwoThirds = "windowLayoutShortcutTopTwoThirds"
+    static let windowLayoutShortcutBottomTwoThirds = "windowLayoutShortcutBottomTwoThirds"
+    static let windowLayoutShortcutTopQuarter = "windowLayoutShortcutTopQuarter"
+    static let windowLayoutShortcutUpperMiddleQuarter = "windowLayoutShortcutUpperMiddleQuarter"
+    static let windowLayoutShortcutLowerMiddleQuarter = "windowLayoutShortcutLowerMiddleQuarter"
+    static let windowLayoutShortcutBottomQuarter = "windowLayoutShortcutBottomQuarter"
+    static let windowLayoutShortcutLeftQuarter = "windowLayoutShortcutLeftQuarter"
+    static let windowLayoutShortcutLeftMiddleQuarter = "windowLayoutShortcutLeftMiddleQuarter"
+    static let windowLayoutShortcutRightMiddleQuarter = "windowLayoutShortcutRightMiddleQuarter"
+    static let windowLayoutShortcutRightQuarter = "windowLayoutShortcutRightQuarter"
     static let windowLayoutShortcutPreviousDisplay = "windowLayoutShortcutPreviousDisplay"
     static let windowLayoutShortcutNextDisplay = "windowLayoutShortcutNextDisplay"
     static let windowLayoutShortcutFullScreen = "windowLayoutShortcutFullScreen"
@@ -1020,6 +1034,7 @@ enum Defaults {
         DefaultsKey.smoothScrollStep: 40,
         DefaultsKey.mouseAccelerationDisabled: false,
         DefaultsKey.smoothScrollResponse: SmoothScrollSupport.defaultResponse,
+        DefaultsKey.smoothScrollCoast: SmoothScrollSupport.defaultCoast,
         DefaultsKey.mouseNavigationEnabled: false,
         DefaultsKey.mouseButtonShortcutsEnabled: false,
         DefaultsKey.mouseButtonShortcuts: [String: String](),
@@ -1614,6 +1629,19 @@ enum Defaults {
         DefaultsKey.windowLayoutShortcutLeftTwoThirds: GlobalShortcut.windowLayoutLeftTwoThirdsDefault.storageValue,
         DefaultsKey.windowLayoutShortcutRightTwoThirds: GlobalShortcut.windowLayoutRightTwoThirdsDefault.storageValue,
         DefaultsKey.windowLayoutShortcutCenterTwoThirds: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutTopThird: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutMiddleThird: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutBottomThird: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutTopTwoThirds: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutBottomTwoThirds: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutTopQuarter: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutUpperMiddleQuarter: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutLowerMiddleQuarter: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutBottomQuarter: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutLeftQuarter: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutLeftMiddleQuarter: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutRightMiddleQuarter: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutRightQuarter: WindowLayoutAction.clearedShortcutStorageValue,
         DefaultsKey.windowLayoutShortcutPreviousDisplay: WindowLayoutAction.clearedShortcutStorageValue,
         DefaultsKey.windowLayoutShortcutNextDisplay: GlobalShortcut.windowLayoutNextDisplayDefault.storageValue,
         DefaultsKey.windowLayoutShortcutTopLeftSixth: WindowLayoutAction.clearedShortcutStorageValue,

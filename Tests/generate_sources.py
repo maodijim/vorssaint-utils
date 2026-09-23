@@ -47,6 +47,14 @@ def availability_declaration(path, prefix):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    write("ClipboardHistoryImageEditor.swift", "import AppKit\n"
+          + "extension ClipboardHistoryImageEditorTests {\nfinal class Host: Fixture {\n"
+          + declaration("Sources/Vorssaint/Services/Clipboard/ClipboardHistoryService.swift",
+                        "    func editImage(")
+          + "}\n}\nextension ClipboardHistoryImageEditorTests.ScreenshotService {\n"
+          + declaration("Sources/Vorssaint/Services/QuickTools/ScreenshotService.swift",
+                        "    static func imageCapture(")
+          + "}\n")
     panel = "Sources/Vorssaint/App/AppDelegate.swift"
     write("PostUpdateStatusItemRecovery.swift", "import AppKit\nimport Foundation\n"
           + "extension PostUpdateStatusItemRecoveryTests {\nfinal class Host: Fixture {\n"
@@ -64,9 +72,9 @@ def main():
               "    private func anchorVisibleFrame(", "    private func applyPopoverDriftFrame(",
               "    private func beginPopoverDriftCorrection(window: NSWindow, anchor: PanelAnchor) {",
               "    private func armPopoverDriftCorrection(", "    private func endPopoverDriftCorrection(",
-              "    private func showPopover(", "    func popoverDidClose(",
+              "    private func showPopover(", "    func popoverWillClose(", "    func popoverDidClose(",
               "    private func releasePanelResources(", "    private func anchorAfterForeignClose(",
-              "    private func reopenPanelAfterForeignClose("])
+              "    private func reopenPanelAfterForeignClose(", "    private func shouldDismissPopover("])
           + "var popoverAnchor: PanelAnchor?\nvar lastGoodPanelAnchor: PanelAnchor?\n"
           + "}\n}\n")
     brightness = "Sources/Vorssaint/Services/Display/BrightnessService.swift"
